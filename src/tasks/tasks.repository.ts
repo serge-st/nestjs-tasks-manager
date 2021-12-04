@@ -1,4 +1,8 @@
-import { NotFoundException } from '@nestjs/common';
+import {
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { User } from 'src/auth/user.entity';
 import { EntityRepository, Repository } from 'typeorm';
 import { CreateTaskDto } from './dto/create-task.dto';
@@ -8,6 +12,8 @@ import { Task } from './task.entity';
 
 @EntityRepository(Task)
 export class TasksRepository extends Repository<Task> {
+  private logger = new Logger('TasksRepository', { timestamp: true });
+
   async getTasks(filterDto: GetTasksFilterDto, user: User): Promise<Task[]> {
     const { status, search } = filterDto;
 
@@ -19,6 +25,8 @@ export class TasksRepository extends Repository<Task> {
       // then this variable is used in the object which is passed as the second argument, i.e. { status: 'OPEN' }
       // if I would write 'task.status = :abrabr', then I would need to pass { abrabr: 'OPEN' }
       query.andWhere('task.status = :status', { status });
+      // To Test the logger in getTasks method:
+      // query.andWhere('task.statusTEST = :status', { status });
     }
 
     if (search) {
@@ -27,9 +35,18 @@ export class TasksRepository extends Repository<Task> {
         { search: `%${search}%` },
       );
     }
-
-    const tasks = await query.getMany();
-    return tasks;
+    try {
+      const tasks = await query.getMany();
+      return tasks;
+    } catch (error) {
+      this.logger.error(
+        `Failed to get tasks for user "${
+          user.username
+        }". Filters ${JSON.stringify(filterDto)}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException();
+    }
   }
 
   async createTask(createTaskDto: CreateTaskDto, user: User): Promise<Task> {
